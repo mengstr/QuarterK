@@ -1,14 +1,11 @@
 /*
- *  QuarterK.h - Library to drive the QuarterK 16x16 Led Matrix shield
+ * QuarterK.h - Library to drive the QuarterK 16x16 Led Matrix shield
  *
- *  v1.0 Created August 2010 by Mats Engstrom <mats@smallroomlabs.com>
+ * v1.0 Created August 2010 by Mats Engstrom <mats@smallroomlabs.com>
  *
- *  This is free software. You can redistribute it and/or modify it under
- *  the terms of Creative Commons Attribution 3.0 United States License. 
- *  To view a copy of this license, visit 
- *  http://creativecommons.org/licenses/by/3.0/us/ 
- *  or send a letter to Creative Commons, 171 Second Street, Suite 300, 
- *  San Francisco, California, 94105, USA.
+ * This software is licensed under the Creative Commons Attribution-
+ * ShareAlike 3.0 Unported License.
+ * http://creativecommons.org/licenses/by-sa/3.0/
  *
  */
 

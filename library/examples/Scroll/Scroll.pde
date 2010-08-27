@@ -5,7 +5,8 @@
  * then scrolls it aqound the display by shifting it 8 steps to the left, down, right and
  * then back up again. 
  *
- *  Created August 2010 by Mats Engstrom <mats@smallroomlabs.com>
+ * Created August 2010 by Mats Engstrom <mats@smallroomlabs.com>
+ *
  */
 #include <QuarterK.h>
 

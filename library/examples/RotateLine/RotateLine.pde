@@ -5,7 +5,9 @@
  * first across the top line from left to right then down along the right edge. This
  * gives the impression of havning the line rotate as a propeller. 
  *
- *  Created August 2010 by Mats Engstrom <mats@smallroomlabs.com>
+ * Created August 2010 by Mats Engstrom <mats@smallroomlabs.com>
+ *
+ *
  */
  
 #include <QuarterK.h>
