@@ -12,11 +12,7 @@
  
 #include <QuarterK.h>
 
-QuarterK qk;
-
 void setup() {
-  // Clear display
-  qk.Clear();
 }
 
 
@@ -28,10 +24,12 @@ void loop() {
   for (x=0; x<16; x++) {
     // Draw a line from start coord diagaonally across 
     qk.Line(x,y, 15-x, 15-y, 1);
+    qk.Flip();
     // Wait for a while...
     delay(25);
     // Then erase the line
     qk.Line(x,y, 15-x, 15-y, 0);
+    qk.Flip();
   }
 
   // Move start coord along right edge
@@ -39,10 +37,12 @@ void loop() {
   for (y=1; y<15; y++) {
     // Draw a line from start coord diagaonally across 
     qk.Line(x,y, 15-x, 15-y, 1);
+    qk.Flip();
     // Wait for a while...
     delay(25);
     // Then erase the line
     qk.Line(x,y, 15-x, 15-y, 0);
+    qk.Flip();
   }
       
 }

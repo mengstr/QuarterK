@@ -10,11 +10,10 @@
  */
 #include <QuarterK.h>
 
-QuarterK qk;
-
 void setup() {
   // Clear framebuffer
   qk.Clear();
+
   // Draw a 8-by-8 pixel space invader alien in the to left quadrant
   framebuffer[0] =0x18;
   framebuffer[2] =0x3c;
@@ -32,27 +31,31 @@ void loop() {
   byte i;
   byte speed=50;
 
-  // Move ailen 8 steps to the right
+  // Move alien 8 steps to the right
   for (i=0; i<8; i++) {
     qk.ShiftRight();
+    qk.Flip();
     qk.Delay(speed);
   }  
 
-  // Move ailen 8 lines down
+  // Move alien 8 lines down
   for (i=0; i<8; i++) {
     qk.ShiftDown();
+    qk.Flip();
     qk.Delay(speed);
   }  
   
-  // Move ailen 8 steps to the left
+  // Move alien 8 steps to the left
   for (i=0; i<8; i++) {
     qk.ShiftLeft();
+    qk.Flip();
     qk.Delay(speed);
   }  
 
-  // Move ailen 8 lines up
+  // Move alien 8 lines up
   for (i=0; i<8; i++) {
     qk.ShiftUp();
+    qk.Flip();
     qk.Delay(speed);
   }  
 

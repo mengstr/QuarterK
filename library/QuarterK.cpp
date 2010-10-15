@@ -1,96 +1,144 @@
 /*
 * QuarterK.cpp - Library to drive the QuarterK 16x16 Led Matrix shield
-*
-* v1.0 Created August 2010 by Mats Engstrom <mats@smallroomlabs.com>
-*
-* This software is licensed under the Creative Commons Attribution-
-* ShareAlike 3.0 Unported License.
-* http://creativecommons.org/licenses/by-sa/3.0/
-*
-*/
+ *
+ * v1.0 Created August 2010 by Mats Engstrom <mats@smallroomlabs.com>
+ * v1.1 Mats Engstrom - Added ReadXXXX-functions and comments.
+ * v1.2 Mats Engstrom - Added double buffering and proportional fonts.
+ *                      The class is also autoinstantiated.
+ * v1.3 Mats Engstrom - Added IsSet().
+ * v1.4 Mats Engstrom - Support for Arduino Mega 1280 (bitbang SPI)
+ *
+ * This software is licensed under the Creative Commons Attribution-
+ * ShareAlike 3.0 Unported License.
+ * http://creativecommons.org/licenses/by-sa/3.0/
+ *
+ */
 
 #include "WProgram.h"
 #include "QuarterK.h"
-
 #include <avr/pgmspace.h>
 
+QuarterK qk;                    // Auto instantiate the class
 
-byte framebuffer[32];
+byte framebuffer[32];           // Used as drawing surface
+byte _framebuffer[32];          // Private framebuffer for screen refresh only
+
 volatile unsigned int tick;
 
 
-QuarterK::QuarterK() {
-    byte tmp;
-    
-    // Set D0-7 as outputs for the column drivers
-    // and turn all columns off
-    DDRD=0xFF;
-    PORTB=0x00;
+//
+// Bit-banged SPI function used by Mega Arduinos 
+//
+#if defined(__AVR_ATmega1280__)
+	#define pulse_pin(port, pin)   port |= _BV(pin); port &= ~_BV(pin)
 
-    // Setup SPI pins
-    pinMode(SCK_PIN, OUTPUT);
-    pinMode(MOSI_PIN, OUTPUT);
-    pinMode(MISO_PIN, INPUT);
-    pinMode(SS_PIN, OUTPUT);
-
-    // Enable SPI master 
-    SPCR = (1<<SPE) | (1<<DORD) | (1<<MSTR);
-    tmp = SPSR;
-    tmp = SPDR;
-
-    // Start timer1 used or refreshing the displays
-    InitializeTimer1();
-}
+	void BitBangSPI(uint8_t byte) {
+	    for (uint8_t bit = 0x01; bit; bit <<= 1) {
+	        if (bit & byte) {
+	            PORTB |= _BV(5); //MOSI_PIN);
+	        } else {
+	            PORTB &= ~_BV(5); //MOSI_PIN);
+	        }
+	        pulse_pin(PORTB, 7); //SCK_PIN);
+	    }
+	}
+#endif	
 
 
 
-
-
-
-
-
-
+//
+//
+//
 ISR(TIMER1_COMPA_vect) {
-    static byte nr=0;
+		static byte nr=0;
     byte offset;
 
     tick++;
-
-    offset=((nr+1)&0x07)*2;
-
-    SPDR = framebuffer[17+offset];
+		offset=((nr+1)&0x07)*2;
+	
+#if defined(__AVR_ATmega1280__)
+		// The Arduino Mega-series must be bit-banged since the SPI pins
+		// are routed to diffrent pins
+		BitBangSPI(::_framebuffer[17+offset]);
+		BitBangSPI(::_framebuffer[16+offset]);
+		BitBangSPI(::_framebuffer[1+offset]);
+		BitBangSPI(::_framebuffer[0+offset]);
+#else
+		// Standard Arduinos can use the SPI hardware directly
+    SPDR = ::_framebuffer[17+offset];
     while (!(SPSR & (1<<SPIF)));
-    SPDR = framebuffer[16+offset];
+    SPDR = ::_framebuffer[16+offset];
     while (!(SPSR & (1<<SPIF)));
-    SPDR = framebuffer[1+offset];
+    SPDR = ::_framebuffer[1+offset];
     while (!(SPSR & (1<<SPIF)));
-    SPDR = framebuffer[0+offset];
+		SPDR = ::_framebuffer[0+offset];
     while (!(SPSR & (1<<SPIF)));
-
+#endif
+	
     digitalWrite(nr, LOW);        // Turn off old cathodes
     digitalWrite(SS_PIN, HIGH);   // Latch shifted data for the anodes
     nr++;
     nr=nr&0x07;
-    digitalWrite(nr, HIGH);       // Turn on the new cathodes
+		digitalWrite(nr, HIGH);       // Turn on the new cathodes
     digitalWrite(SS_PIN, LOW);
 }
 
 
 
 
-void QuarterK::InitializeTimer1() {
-    TCCR1A=0x00;
-    TCCR1B=(_BV(WGM12) | _BV(CS11) | _BV(CS10)); //Divide by 64
-    OCR1A=249;                    //Count to 250
-    TIMSK1=_BV(OCIE1A);
-    sei();                          // ensures that interrupts are globally enabled
+//
+// Constructor for QuarterK - Setup ports & start timer
+//
+QuarterK::QuarterK() {
+	byte tmp;
+	byte i;
+		
+	// Set D0-7 as outputs for the column drivers
+	// and turn all columns off
+  for (i=0; i<8; i++) {
+    pinMode(i, OUTPUT);
+    digitalWrite(i, LOW);
+  }
+	
+	// Setup SPI pins
+	pinMode(SCK_PIN, OUTPUT);
+	pinMode(MOSI_PIN, OUTPUT);
+	pinMode(MISO_PIN, INPUT);
+	pinMode(SS_PIN, OUTPUT);
+	
+#if defined(__AVR_ATmega1280__)
+	// Need to bit-bang the SPI for Mega Arduinos
+#else
+	// Enable SPI master hardware
+	SPCR = (1<<SPE) | (1<<DORD) | (1<<MSTR);
+	tmp = SPSR;
+	tmp = SPDR;
+#endif
+
+	// Start timer1 used for refreshing the displays
+	TCCR1A=0x00;
+	TCCR1B=(_BV(WGM12) | _BV(CS11) | _BV(CS10)); 	//Divide by 64
+	OCR1A=249;                    								//Count to 250
+	TIMSK1=_BV(OCIE1A);
+	sei();                												// Enable interrupts
+}
+
+
+
+//
+// Copy the bit buffer from the drawing/work area to the 
+// refresh framebuffer
+//
+void QuarterK::Flip(void) {
+	memcpy(::_framebuffer, framebuffer, 32);
 }
 
 
 
 
-
-
+//
+//
+//
 void QuarterK::ShiftLeft(void) {
     asm volatile(
     "clc"					       	"\n\t"	// Line1
@@ -224,6 +272,9 @@ void QuarterK::ShiftLeft(void) {
 }
 
 
+//
+//
+//
 void QuarterK::ShiftRight(void) {
     asm volatile(
     "clc"					       	"\n\t"	// Line1
@@ -358,12 +409,19 @@ void QuarterK::ShiftRight(void) {
 
 
 
+//
+//
+//
 void QuarterK::ShiftUp(void) {
     memmove(&framebuffer[0], &framebuffer[2], 30);
     framebuffer[30]=0;
     framebuffer[31]=0;
 }
 
+
+//
+//
+//
 void QuarterK::ShiftDown(void) {
     memmove(&framebuffer[2], &framebuffer[0], 30);
     framebuffer[0]=0;
@@ -372,20 +430,25 @@ void QuarterK::ShiftDown(void) {
 
 
 
+//
+//
+//
 void QuarterK::Clear(void) {
     memset(framebuffer,0x00,32);
 }
 
 
-
-
+//
+//
+//
 void QuarterK::Fill(void) {
     memset(framebuffer,0xFF,32);
 } 
 
 
-
-
+//
+//
+//
 void QuarterK::Plot(byte x, byte y, byte color) {
     byte address;
     byte mask;
@@ -402,6 +465,23 @@ void QuarterK::Plot(byte x, byte y, byte color) {
 
 
 
+//
+// Returns true if the pixel in the framebuffer[] is on
+//
+boolean QuarterK::IsSet(byte x, byte y) {
+    byte address;
+    byte mask;
+
+    address=(y<<1)+((x>>3)&0x01);
+    mask=1<<(x&0x07);
+		return framebuffer[address]&mask;
+}
+
+
+
+//
+//
+//
 void QuarterK::Line(byte x1, byte y1, unsigned char x2, unsigned char y2, unsigned char color ) {
     char deltax = abs(x2 - x1);        // The difference between the x's
     char deltay = abs(y2 - y1);        // The difference between the y's
@@ -490,12 +570,8 @@ for (;;);
 }
 
 
-*/
 
-
-
-
-prog_uchar font[] PROGMEM = {
+prog_uchar propfont[] PROGMEM = {
     0B00000110, 0B00001001, 0B00001001, 0B00001111, 0B00001001, 0B00000000, //A
     0B00000110, 0B00001001, 0B00000111, 0B00001001, 0B00001111, 0B00000000, //B
     0B00000110, 0B00001001, 0B00000001, 0B00001001, 0B00000110, 0B00000000, //C
@@ -534,11 +610,12 @@ prog_uchar font[] PROGMEM = {
     0B00000110, 0B00001001, 0B00001110, 0B00001000, 0B00000110, 0B00000000  //9
 };
 
-prog_uchar charwidth[] PROGMEM = {
+prog_uchar propcharwidth[] PROGMEM = {
     4,4,4,4,4,4,4,4,1,2,4,4,5,4,4,4,4,4,4,5,4,4,5,5,4,5,4,2,4,4,4,4,4,4,4,4
 };
 
 
+*/
 
 
 prog_uchar font3x4[] PROGMEM = {
@@ -618,6 +695,135 @@ void QuarterK::Draw3x4Characters(char *str, byte x, byte y, byte yinc) {
 }
 
 
+
+
+
+//
+//
+//
+boolean QuarterK::DrawText(char *msg, uint8_t *pFont, int shift, byte xPos, byte yPos) {
+  byte     i;
+  byte     j;
+  byte     charCode;
+  uint8_t  charWidth;
+  uint8_t  charHeight;
+  uint8_t  *p;
+  uint8_t  bitmap;
+  word     widths;
+  int      x;
+  byte     y;
+  byte     column;
+  int      offset;
+
+  offset=0;
+  charHeight=pgm_read_byte_near(pFont+3);   // Character height 
+
+  // Process character by character in the message string
+  for (i=0; i<strlen(msg); i++) {
+    // Get the Character Code to be handled and offset it with the code for
+    // the frist character in the font table.
+    charCode=msg[i]-pgm_read_byte_near(pFont+4);    
+
+    // Add up the widths until our character
+    widths=0;
+    for (j=0; j<charCode; j++) {
+      widths+=pgm_read_byte_near(pFont+6+j); 
+    } 
+
+    // Get the width of our character
+    charWidth=pgm_read_byte_near(pFont+6+charCode);
+
+    // Calculate the beginning of the bitmap for our character
+    // (characters with height >8 uses twice the amount of bitmap
+    // data)
+    if (charHeight<9) {
+      p=pFont+6+pgm_read_byte_near(pFont+5)+widths;   
+    } 
+    else {
+      p=pFont+6+pgm_read_byte_near(pFont+5)+widths*2;   
+    }
+
+    // Return true if the entire message hs been scrolled out of the screen
+    if ((i==strlen(msg)-1) && (offset-shift+charWidth<0)) return true; 
+
+    // Get out of this function early if we've already reached the right edge
+    if (offset-shift>16) return false;
+
+    // Plot the pixels of the (up to) first 8 rows of the character
+    for (column=0; column<charWidth; column++) {
+      x=column+offset-shift;
+      bitmap=pgm_read_byte_near(p++);
+      if ((x>=0) && (x<16)) {
+        y=min(7, charHeight-1);
+        if (bitmap&0x80) qk.Plot(x,y);
+        y--;
+        if (charHeight==1) continue;
+        if (bitmap&0x40) qk.Plot(x,y); 
+        y--; 
+        if (charHeight==2) continue;
+        if (bitmap&0x20) qk.Plot(x,y);
+        y--; 
+        if (charHeight==3) continue;
+        if (bitmap&0x10) qk.Plot(x,y); 
+        y--; 
+        if (charHeight==4) continue;
+        if (bitmap&0x08) qk.Plot(x,y); 
+        y--; 
+        if (charHeight==5) continue;
+        if (bitmap&0x04) qk.Plot(x,y); 
+        y--; 
+        if (charHeight==6) continue;
+        if (bitmap&0x02) qk.Plot(x,y);
+        y--; 
+        if (charHeight==7) continue;
+        if (bitmap&0x01) qk.Plot(x,y); 
+      }
+    }
+
+    // Plot the pixels for the remaning lower rows
+    if (charHeight>8) {
+      for (column=0; column<charWidth; column++) {
+        x=column+offset-shift;
+        y=charHeight-1;
+        bitmap=pgm_read_byte_near(p++);
+        if ((x>=0) && (x<16)) {
+          if (bitmap&0x80) qk.Plot(x,y);
+          y--;
+          if (charHeight==9) continue;
+          if (bitmap&0x40) qk.Plot(x,y);
+          y--; 
+          if (charHeight==10) continue;
+          if (bitmap&0x20) qk.Plot(x,y); 
+          y--; 
+          if (charHeight==11) continue;
+          if (bitmap&0x10) qk.Plot(x,y); 
+          y--; 
+          if (charHeight==12) continue;
+          if (bitmap&0x08) qk.Plot(x,y); 
+          y--; 
+          if (charHeight==13) continue;
+          if (bitmap&0x04) qk.Plot(x,y); 
+          y--; 
+          if (charHeight==14) continue;
+          if (bitmap&0x02) qk.Plot(x,y); 
+          y--; 
+          if (charHeight==15) continue;
+          if (bitmap&0x01) qk.Plot(x,y); 
+        }
+      }
+    }
+
+    offset+=charWidth+1;
+  }
+
+  return false;
+}
+
+
+
+//
+//
+//
 void QuarterK::Delay(unsigned int ms) {
     while (ms-->0) {
         unsigned int oldtick=tick;
@@ -627,7 +833,9 @@ void QuarterK::Delay(unsigned int ms) {
 
 
 
-
+//
+//
+//
 boolean QuarterK::ReadFireButton(byte controllerNo) {
     if (analogRead(controllerNo*3+2)>128) {
         return true;
@@ -637,6 +845,9 @@ boolean QuarterK::ReadFireButton(byte controllerNo) {
 }
 
 
+//
+//
+//
 byte QuarterK::ReadDirButtons(byte controllerNo) {
     int v;
     
@@ -649,9 +860,13 @@ byte QuarterK::ReadDirButtons(byte controllerNo) {
 }
 
 
+//
+//
+//
 int QuarterK::ReadPaddle(byte controllerNo) {
     int v;
 
     v=analogRead(controllerNo*3);
     return v;
 }
+
