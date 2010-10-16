@@ -7,6 +7,7 @@
  *                      The class is also autoinstantiated.
  * v1.3 Mats Engstrom - Added IsSet().
  * v1.4 Mats Engstrom - Support for Arduino Mega 1280 (bitbang SPI)
+ * v1.5 Mats Engstrom - Fixed bug in tick handling. Support for yPos in DrawText()
  *
  * This software is licensed under the Creative Commons Attribution-
  * ShareAlike 3.0 Unported License.
@@ -24,6 +25,10 @@ byte framebuffer[32];           // Used as drawing surface
 byte _framebuffer[32];          // Private framebuffer for screen refresh only
 
 volatile unsigned int tick;
+
+unsigned int QuarterK::GetTick() {
+	return tick;
+}
 
 
 //
@@ -52,8 +57,8 @@ volatile unsigned int tick;
 ISR(TIMER1_COMPA_vect) {
 		static byte nr=0;
     byte offset;
-
-    tick++;
+	
+		tick++;
 		offset=((nr+1)&0x07)*2;
 	
 #if defined(__AVR_ATmega1280__)
@@ -755,6 +760,7 @@ boolean QuarterK::DrawText(char *msg, uint8_t *pFont, int shift, byte xPos, byte
       bitmap=pgm_read_byte_near(p++);
       if ((x>=0) && (x<16)) {
         y=min(7, charHeight-1);
+        y+=yPos;
         if (bitmap&0x80) qk.Plot(x,y);
         y--;
         if (charHeight==1) continue;
@@ -785,6 +791,7 @@ boolean QuarterK::DrawText(char *msg, uint8_t *pFont, int shift, byte xPos, byte
       for (column=0; column<charWidth; column++) {
         x=column+offset-shift;
         y=charHeight-1;
+        y+=yPos;
         bitmap=pgm_read_byte_near(p++);
         if ((x>=0) && (x<16)) {
           if (bitmap&0x80) qk.Plot(x,y);
@@ -825,8 +832,9 @@ boolean QuarterK::DrawText(char *msg, uint8_t *pFont, int shift, byte xPos, byte
 //
 //
 void QuarterK::Delay(unsigned int ms) {
+		unsigned int oldtick;
     while (ms-->0) {
-        unsigned int oldtick=tick;
+				oldtick=tick;
         while(tick==oldtick);
     };
 }
